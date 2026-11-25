@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Vidala</title>
+<meta name="description" content="Minimal, geometrik vida bulmaca oyunu.">
+<meta name="theme-color" content="#0C0F1D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Vidala">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+:root {
+  --bg-top: #1A2038; --bg-bottom: #0C0F1D; --card: #1F2643; --accent: #7C83FD;
+  --hard: #FF8C42; --text: #fff; --muted: rgba(255,255,255,.6);
+  --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  background: linear-gradient(var(--bg-top), var(--bg-bottom)) fixed;
+  background-color: var(--bg-bottom);
+  color: var(--text);
+  font-family: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+.screen {
+  position: fixed; inset: 0; margin: 0 auto; max-width: 480px;
+  display: flex; flex-direction: column;
+  padding: calc(var(--safe-top) + 8px) 16px calc(var(--safe-bottom) + 12px);
+  transition: opacity .3s ease;
+}
+.screen.hidden { opacity: 0; pointer-events: none; }
+svg.i { width: 1em; height: 1em; fill: currentColor; display: block; }
+
+/* ---------- Harita ---------- */
+.map-head { display: flex; align-items: baseline; justify-content: space-between; padding: 8px 4px 8px; }
+.map-head h1 { margin: 0; font-size: 34px; font-weight: 900; color: var(--accent); letter-spacing: -.5px; }
+.map-head .done { display: flex; gap: 6px; align-items: center; font-weight: 700; font-size: 15px; color: rgba(255,255,255,.7); }
+#mapScroll { flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; margin: 0 -16px; -webkit-overflow-scrolling: touch; }
+#mapScroll::-webkit-scrollbar { display: none; }
+#mapInner { position: relative; }
+#mapInner svg.road { position: absolute; inset: 0; overflow: visible; }
+.node { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; }
+.node .shape { width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; position: relative; }
+.node.cur .shape { width: 70px; height: 70px; }
+.node.done .shape { background: linear-gradient(#9aa0ff, var(--accent)); box-shadow: 0 4px 14px rgba(124,131,253,.45); border: 2px solid rgba(255,255,255,.35); }
+.node.cur .shape { background: #fff; color: var(--accent); font-size: 28px; box-shadow: 0 4px 16px rgba(124,131,253,.5); }
+.node.locked .shape { background: rgba(255,255,255,.07); border: 2px solid rgba(255,255,255,.1); color: rgba(255,255,255,.3); }
+.node.done .shape .n { font-size: 20px; line-height: 1; }
+.node.done .shape .ck { width: 11px; height: 11px; }
+.node.hard .shape { border-radius: 0; clip-path: polygon(50% 0, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%); border: 0; }
+.node.hard.done .shape { background: linear-gradient(#ffb07a, var(--hard)); }
+.node.hard.cur .shape { color: var(--hard); }
+.node .ring { position: absolute; width: 88px; height: 88px; border-radius: 50%; border: 3px solid rgba(124,131,253,.6); animation: ring 1.8s ease-in-out infinite; }
+.node.hard .ring { border-radius: 0; border: 0; background: rgba(255,140,66,.35); clip-path: polygon(50% 0, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%, 50% 0, 50% 6%, 12% 28%, 12% 72%, 50% 94%, 88% 72%, 88% 28%, 50% 6%); }
+@keyframes ring { 0%,100% { transform: scale(1); opacity: .6; } 50% { transform: scale(1.18); opacity: .1; } }
+.node .tag { position: absolute; bottom: -8px; background: var(--hard); font-size: 10px; font-weight: 900; padding: 2px 7px; border-radius: 99px; }
+.node.locked .tag { opacity: .45; }
+.zone { position: absolute; transform: translate(-50%, -50%); font-size: 12px; font-weight: 900; letter-spacing: 1px; color: rgba(255,255,255,.55); background: rgba(255,255,255,.07); padding: 5px 12px; border-radius: 99px; white-space: nowrap; }
+.primary { width: 100%; height: 56px; border-radius: 18px; background: var(--accent); font-size: 18px; font-weight: 800; box-shadow: 0 6px 18px rgba(124,131,253,.35); }
+.primary:active { transform: scale(.98); }
+
+/* ---------- Oyun ---------- */
+.head { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 10px; margin-bottom: 12px; }
+.round { width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,.08); display: grid; place-items: center; font-size: 20px; }
+.round:active { transform: scale(.94); }
+.title { text-align: center; }
+.title .t { font-size: 22px; font-weight: 800; display: inline-flex; align-items: center; gap: 8px; }
+.badge-hard { background: var(--hard); font-size: 12px; font-weight: 900; padding: 2px 8px; border-radius: 99px; }
+.bar { height: 5px; margin: 6px auto 0; width: 70%; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; }
+.bar > div { height: 100%; background: var(--accent); border-radius: 99px; transition: width .4s ease; }
+.bar.hard > div { background: var(--hard); }
+.right { display: flex; align-items: center; gap: 10px; }
+.count { display: flex; align-items: center; gap: 6px; font-weight: 700; color: rgba(255,255,255,.75); font-size: 16px; }
+
+#boxes { display: flex; gap: 10px; height: 62px; }
+.boxslot { flex: 1; position: relative; }
+.box { position: absolute; inset: 0; border-radius: 16px; border: 2.5px solid var(--c); background: color-mix(in srgb, var(--c) 18%, transparent);
+  display: grid; place-items: center; transition: background .3s, transform .3s cubic-bezier(.3,1.6,.5,1); }
+.box.enter { animation: boxIn .45s cubic-bezier(.3,1.5,.5,1); }
+@keyframes boxIn { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.box .slots { display: flex; gap: 8px; transition: opacity .25s; }
+.box .hole { width: 28px; height: 28px; border-radius: 50%; background: rgba(0,0,0,.35); display: grid; place-items: center; }
+.box.closing { background: color-mix(in srgb, var(--c) 85%, transparent); transform: scale(1.06); }
+.box.closing .slots { opacity: 0; }
+.box .check { position: absolute; font-size: 26px; opacity: 0; transform: scale(.3); transition: all .3s cubic-bezier(.3,1.6,.5,1); }
+.box.closing .check { opacity: 1; transform: scale(1); }
+.box.empty { border: 2px dashed rgba(255,255,255,.15); background: none; color: rgba(255,255,255,.3); }
+.queue { width: 58px; border-radius: 14px; background: rgba(255,255,255,.06); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 11px; font-weight: 600; color: rgba(255,255,255,.5); }
+.queue .dots { display: flex; gap: 4px; height: 12px; align-items: center; }
+.queue .dots i { width: 12px; height: 12px; border-radius: 4px; display: block; }
+
+#buffer { align-self: center; margin-top: 12px; display: flex; gap: 10px; padding: 9px 14px; border-radius: 99px; background: rgba(255,255,255,.06); border: 2px solid transparent; transition: border-color .25s; }
+#buffer.danger { border-color: rgba(255,59,48,.6); }
+#buffer .cell { width: 34px; height: 34px; border-radius: 50%; background: rgba(0,0,0,.4); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); display: grid; place-items: center; }
+
+.screw { width: var(--s, 26px); height: var(--s, 26px); border-radius: 50%; position: relative;
+  background: linear-gradient(135deg, var(--l), var(--c)); box-shadow: inset 0 0 0 calc(var(--s, 26px) * .08) rgba(255,255,255,.9), 0 1.5px 2px rgba(0,0,0,.35); }
+.screw::before, .screw::after { content: ""; position: absolute; left: 50%; top: 50%; background: rgba(0,0,0,.35); border-radius: 99px; transform: translate(-50%, -50%); }
+.screw::before { width: 50%; height: 12%; }
+.screw::after { width: 12%; height: 50%; }
+.pop { animation: pop .35s cubic-bezier(.3,1.6,.5,1); }
+@keyframes pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+#boardWrap { flex: 1; position: relative; margin: 8px -16px 4px; min-height: 0; }
+#board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+
+.boosters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.boost { height: 64px; border-radius: 16px; background: rgba(255,255,255,.07); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 13px; font-weight: 700; position: relative; }
+.boost svg.i { font-size: 22px; }
+.boost:active { transform: scale(.97); }
+.boost[disabled] { opacity: .35; }
+.boost .b { position: absolute; top: -6px; right: -4px; min-width: 20px; height: 20px; border-radius: 99px; background: var(--accent); font-size: 12px; display: grid; place-items: center; padding: 0 5px; }
+
+.burst i { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3.5px; border-radius: 50%; animation: burst .55s ease-out forwards; }
+@keyframes burst { to { transform: translate(var(--x), var(--y)) scale(.3); opacity: 0; } }
+
+/* ---------- Sonuç ---------- */
+#result { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.55); transition: opacity .3s; padding: 24px; z-index: 5; }
+#result.hidden { opacity: 0; pointer-events: none; }
+.card { width: 100%; max-width: 360px; background: var(--card); border-radius: 28px; padding: 28px 24px 18px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.5); transform: scale(1); transition: transform .35s cubic-bezier(.3,1.5,.5,1); }
+#result.hidden .card { transform: scale(.85); }
+.card .ic { font-size: 60px; display: grid; place-items: center; }
+.card h2 { margin: 12px 0 6px; font-size: 26px; font-weight: 900; }
+.card p { margin: 0 0 18px; color: rgba(255,255,255,.7); }
+.card .link { display: block; width: 100%; padding: 12px; font-weight: 700; font-size: 17px; }
+.card .link.dim { color: rgba(255,255,255,.6); font-size: 15px; padding-top: 4px; }
+#confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 6; }
+#confetti i { position: absolute; top: -20px; width: 8px; height: 12px; border-radius: 2px; animation: fall linear forwards; }
+@keyframes fall { to { transform: translate(var(--dx), 110vh) rotate(var(--r)); } }
+</style>
+</head>
+<body>
+
+<!-- Harita -->
+<section id="map" class="screen">
+  <div class="map-head">
+    <h1>Vidala</h1>
+    <div class="done"><svg class="i" viewBox="0 0 24 24"><path d="M12 2l2.4 1.8 3-.2.9 2.9 2.5 1.7-1 2.8 1 2.8-2.5 1.7-.9 2.9-3-.2L12 22l-2.4-1.8-3 .2-.9-2.9-2.5-1.7 1-2.8-1-2.8 2.5-1.7.9-2.9 3 .2z"/><path d="M10.5 15.5l-3-3 1.4-1.4 1.6 1.6 4.6-4.6 1.4 1.4z" fill="#1A2038"/></svg><span id="doneCount"></span></div>
+  </div>
+  <div id="mapScroll"><div id="mapInner"></div></div>
+  <button class="primary" id="playBtn" style="margin-top:8px"></button>
+</section>
+
+<!-- Oyun -->
+<section id="game" class="screen hidden">
+  <div class="head">
+    <button class="round" id="mapBtn" aria-label="Harita"><svg class="i" viewBox="0 0 24 24"><path d="M9 3l6 2 6-2v16l-6 2-6-2-6 2V5zm1 2.4v12.3l4 1.3V6.7z"/></svg></button>
+    <div class="title"><div class="t"><span id="lvlTitle"></span><span id="hardBadge" class="badge-hard">ZOR</span></div><div class="bar" id="bar"><div></div></div></div>
+    <div class="right">
+      <div class="count"><svg class="i" viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7zm0 2.3L5.6 8 12 11.6 18.4 8zM5 9.7v6.1l6 3.4v-6.1zm14 0l-6 3.4v6.1l6-3.4z"/></svg><span id="boxCount"></span></div>
+      <button class="round" id="soundBtn" aria-label="Ses"></button>
+    </div>
+  </div>
+  <div id="boxes"></div>
+  <div id="buffer"></div>
+  <div id="boardWrap"><canvas id="board"></canvas></div>
+  <div class="boosters">
+    <button class="boost" id="slotBtn"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M11 7h2v4h4v2h-4v4h-2v-4H7v-2h4z" fill="#1F2643"/></svg>Boşluk Ekle<span class="b" id="slotBadge">1</span></button>
+    <button class="boost" id="hintBtn"><svg class="i" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2zM9 19h6v1.5a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 20.5z"/></svg>İpucu<span class="b" id="hintBadge">3</span></button>
+    <button class="boost" id="restartBtn"><svg class="i" viewBox="0 0 24 24"><path d="M12 4V1L7 5.5 12 10V6a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg>Yeniden</button>
+  </div>
+</section>
+
+<div id="result" class="hidden"><div class="card" id="resultCard"></div></div>
+<div id="confetti"></div>
+
+<script>
+"use strict";
+// =====================================================================
+// Sabitler
+// =====================================================================
+const BW = 360, BH = 470, SR = 15;
+const COLORS = { red: "#FF4D5E", blue: "#3D8BFF", yellow: "#FFD23F", green: "#2ECC71",
+                 purple: "#9B5DE5", orange: "#FF8C42", pink: "#FF5DA2", cyan: "#22D3EE" };
+const COLOR_KEYS = Object.keys(COLORS);
+const TINTS = ["#E6EAF4", "#F3E6DA", "#DDEFE6", "#E9E0F3", "#DCE8F5", "#F4E3E8"];
+const UNSCREW = 0.5;          // vidanın dönerek çıkma süresi (sn)
+const ACCENT = "#7C83FD", HARD = "#FF8C42";
+
+function mixWhite(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => Math.round(v + (255 - v) * k));
+  return `rgb(${ch.join(",")})`;
+}
+function rgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+}
+const LIGHT = Object.fromEntries(COLOR_KEYS.map(k => [k, mixWhite(COLORS[k], 0.3)]));
+
+// Her bölüm hep aynı görünsün diye bölüm numarasıyla tohumlanan RNG.
+function RNG(seed) {
+  let a = seed >>> 0;
+  return {
+    next() {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    },
+    int(lo, hi) { return lo + Math.floor(this.next() * (hi - lo + 1)); },
+    pick(arr) { return arr[Math.floor(this.next() * arr.length)]; },
+    shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(this.next() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+      return arr;
+    },
+  };
+}
+
+// =====================================================================
+// Plaka şekilleri (merkezi 0,0 olan yerel şekiller ve vida yuvaları)
+// =====================================================================
+const HEX = [0, 1, 2, 3, 4, 5].map(i => [Math.cos(i * Math.PI / 3) * 62, Math.sin(i * Math.PI / 3) * 62]);
+const KINDS = {
+  bar:      { rects: [[-82, -24, 164, 48, 24]], anchors: [[-56, 0], [0, 0], [56, 0]] },
+  shortBar: { rects: [[-56, -24, 112, 48, 24]], anchors: [[-30, 0], [30, 0]] },
+  square:   { rects: [[-55, -55, 110, 110, 20]], anchors: [[-28, -28], [28, -28], [-28, 28], [28, 28]] },
+  circle:   { circle: 58, anchors: [[0, -31], [27, 15.5], [-27, 15.5], [0, 0]] },
+  plus:     { rects: [[-76, -23, 152, 46, 23], [-23, -76, 46, 152, 23]], anchors: [[0, 0], [50, 0], [-50, 0], [0, 50], [0, -50]] },
+  triangle: { poly: [[0, -74], [64, 37], [-64, 37]], anchors: [[0, -32], [28, 16], [-28, 16]] },
+  hexagon:  { poly: HEX, anchors: [90, 210, 330].map(d => [Math.cos(d * Math.PI / 180) * 32, Math.sin(d * Math.PI / 180) * 32]).concat([[0, 0]]) },
+};
+const KIND_NAMES = Object.keys(KINDS);
+for (const k of KIND_NAMES) {
+  const K = KINDS[k];
+  K.hull = K.rects ? K.rects.flatMap(([x, y, w, h]) => [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]) : K.poly || null;
+  const p = new Path2D();
+  if (K.circle) p.arc(0, 0, K.circle, 0, Math.PI * 2);
+  else if (K.rects) for (const [x, y, w, h, r] of K.rects) p.roundRect(x, y, w, h, r);
+  else { p.moveTo(...K.poly[0]); for (const q of K.poly.slice(1)) p.lineTo(...q); p.closePath(); }
+  K.path = p;
+}
+
+function localContains(K, x, y) {
+  if (K.circle) return x * x + y * y <= K.circle * K.circle;
+  if (K.rects) {
+    for (const [rx, ry, w, h, r] of K.rects) {
+      const cx = Math.min(Math.max(x, rx + r), rx + w - r), cy = Math.min(Math.max(y, ry + r), ry + h - r);
+      if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) return true;
+    }
+    return false;
+  }
+  const P = K.poly; let sign = 0;
+  for (let i = 0; i < P.length; i++) {
+    const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length];
+    const c = (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);
+    if (c !== 0) { const s = c > 0 ? 1 : -1; if (!sign) sign = s; else if (s !== sign) return false; }
+  }
+  return true;
+}
+function toWorld(p, lx, ly) {
+  const c = Math.cos(p.angle), s = Math.sin(p.angle);
+  return { x: p.cx + lx * c - ly * s, y: p.cy + lx * s + ly * c };
+}
+function contains(p, x, y) {
+  const dx = x - p.cx, dy = y - p.cy, c = Math.cos(p.angle), s = Math.sin(p.angle);
+  return localContains(KINDS[p.kind], dx * c + dy * s, -dx * s + dy * c);
+}
+function aabb(p) {
+  const K = KINDS[p.kind];
+  if (K.circle) return { x0: p.cx - K.circle, y0: p.cy - K.circle, x1: p.cx + K.circle, y1: p.cy + K.circle };
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const [lx, ly] of K.hull) {
+    const w = toWorld(p, lx, ly);
+    x0 = Math.min(x0, w.x); y0 = Math.min(y0, w.y); x1 = Math.max(x1, w.x); y1 = Math.max(y1, w.y);
+  }
+  return { x0, y0, x1, y1 };
+}
+function makePlate(id, kind, cx, cy, angle) {
+  const p = { id, kind, cx, cy, angle, holes: [], tint: 0, fallSpin: 0, isFalling: false };
+  p.bb = aabb(p);
+  return p;
+}
+/** Vida, bir plaka tarafından (5 noktadan biri bile) kapatılıyor mu? */
+function covers(p, x, y) {
+  const r = SR * 0.7, b = p.bb;
+  if (x < b.x0 - r || x > b.x1 + r || y < b.y0 - r || y > b.y1 + r) return false;
+  return contains(p, x, y) || contains(p, x + r, y) || contains(p, x - r, y) || contains(p, x, y + r) || contains(p, x, y - r);
+}
+function rotatedPlate(p, a, pv) {
+  const dx = p.cx - pv.x, dy = p.cy - pv.y, c = Math.cos(a), s = Math.sin(a);
+  const q = { ...p, cx: pv.x + dx * c - dy * s, cy: pv.y + dx * s + dy * c, angle: p.angle + a };
+  q.bb = aabb(q);
+  return q;
+}
+
+// =====================================================================
+// Fizik yardımcıları: tek vidada asılı kalan plaka
+// =====================================================================
+function isBalanced(c, pv) { return Math.hypot(c.x - pv.x, c.y - pv.y) <= 8; }
+/** Ağırlık merkezinin vidanın tam altına gelmesi için gereken dönüş. */
+function hangAngle(c, pv) {
+  if (isBalanced(c, pv)) return null;
+  let a = Math.PI / 2 - Math.atan2(c.y - pv.y, c.x - pv.x);
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a <= -Math.PI) a += 2 * Math.PI;
+  return Math.abs(a) < 0.02 ? null : a;
+}
+function updateCover(cover, plateID, newPlate, plates, screws) {
+  const layer = plates.findIndex(p => p.id === plateID);
+  if (layer < 0) return;
+  const below = new Set(plates.slice(0, layer).map(p => p.id));
+  for (const s of screws) {
+    if (!below.has(s.plateID)) continue;
+    const list = (cover[s.id] || []).filter(x => x !== plateID);
+    if (covers(newPlate, s.x, s.y)) list.push(plateID);
+    cover[s.id] = list;
+  }
+}
+/** Plakada tek vida kaldıysa sarkacağı son konuma göre kapatma tablosunu günceller. */
+function applySwing(plateID, remaining, plates, screws, cover) {
+  if (remaining.length !== 1) return null;
+  const plate = plates.find(p => p.id === plateID);
+  if (!plate) return null;
+  const pv = { x: remaining[0].x, y: remaining[0].y };
+  const a = hangAngle({ x: plate.cx, y: plate.cy }, pv);
+  if (a === null) return null;
+  updateCover(cover, plateID, rotatedPlate(plate, a, pv), plates, screws);
+  return { angle: a, pivot: pv };
+}
+function coverMap(plates, screws) {
+  const layerOf = new Map(plates.map((p, i) => [p.id, i]));
+  const map = {};
+  for (const s of screws) {
+    const L = layerOf.get(s.plateID) ?? 0;
+    map[s.id] = plates.slice(L + 1).filter(p => covers(p, s.x, s.y)).map(p => p.id);
+  }
+  return map;
+}
+const cloneCover = c => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v.slice()]));
+function countBy(screws) { const m = {}; for (const s of screws) m[s.plateID] = (m[s.plateID] || 0) + 1; return m; }
+
+// =====================================================================
+// Bölüm üretimi (her zaman çözülebilir)
+// =====================================================================
+const isHard = n => n % 5 === 0;
+function config(n) {
+  const c = {
+    plateCount: Math.min(4 + Math.floor(n * 4 / 5), 26),
+    colorCount: Math.min(3 + Math.floor(n / 3), COLOR_KEYS.length),
+    maxScrews: n <= 2 ? 2 : (n <= 6 ? 3 : 4),
+    window: Math.min(2 + Math.floor(n * 2 / 3), 14),
+    solveCap: n <= 2 ? 3 : (n <= 8 ? 4 : 5),
+    spread: Math.max(0.7, 1 - n * 0.01),
+  };
+  if (isHard(n)) {
+    c.plateCount = Math.min(c.plateCount + 5, 30); c.window += 3; c.solveCap = 5; c.spread = Math.max(0.65, c.spread - 0.08);
+  }
+  return c;
+}
+
+function buildLevel(n, cfg, rng) {
+  const plates = [], screws = [];
+  let sid = 0;
+  const B = { x: 6, y: 6, w: BW - 12, h: BH - 12 };
+  const minGap = SR * 2 + 4;
+  for (let pid = 0; pid < cfg.plateCount; pid++) {
+    for (let t = 0; t < 30; t++) {
+      const kind = rng.pick(KIND_NAMES);
+      const angle = rng.int(0, 11) * Math.PI / 12;
+      // İki rastgele sayının ortalaması: plakalar ortada toplanır, üst üste biner.
+      const ux = (rng.next() + rng.next()) / 2, uy = (rng.next() + rng.next()) / 2;
+      const cx = B.x + B.w / 2 + (ux - 0.5) * (B.w - 100) * cfg.spread;
+      const cy = B.y + B.h / 2 + (uy - 0.5) * (B.h - 120) * cfg.spread;
+      const p = makePlate(pid, kind, cx, cy, angle);
+      if (p.bb.x0 < B.x || p.bb.y0 < B.y || p.bb.x1 > B.x + B.w || p.bb.y1 > B.y + B.h) continue;
+      const anchors = rng.shuffle(KINDS[kind].anchors.map(([lx, ly]) => toWorld(p, lx, ly)));
+      const most = Math.min(cfg.maxScrews, anchors.length);
+      const want = rng.int(Math.max(1, most - 1), most);
+      // Bu plakanın tamamen örttüğü alttaki vidalar görünmez; onlara yakın vida konabilir.
+      const hidden = new Set(screws.filter(s => {
+        for (let k = 0; k < 8; k++) {
+          const a = k * Math.PI / 4;
+          if (!contains(p, s.x + Math.cos(a) * SR, s.y + Math.sin(a) * SR)) return false;
+        }
+        return true;
+      }).map(s => s.id));
+      const visible = screws.filter(s => !hidden.has(s.id));
+      const chosen = [];
+      for (const a of anchors) {
+        if (chosen.length >= want) break;
+        if (visible.concat(chosen).every(q => Math.hypot(q.x - a.x, q.y - a.y) >= minGap)) chosen.push(a);
+      }
+      if (!chosen.length) continue;
+      for (const c of chosen) screws.push({ id: sid++, plateID: pid, x: c.x, y: c.y, color: "red" });
+      p.tint = rng.int(0, TINTS.length - 1);
+      p.fallSpin = rng.next() * 80 - 40;
+      plates.push(p);
+      break;
+    }
+  }
+  // Toplam vida 3'ün katı olmalı (her kutu 3 vida alır).
+  while (screws.length % 3 !== 0) {
+    const p = plates.slice().reverse().find(p => screws.filter(s => s.plateID === p.id).length > 1);
+    if (!p) return null;
+    for (let i = screws.length - 1; i >= 0; i--) if (screws[i].plateID === p.id) { screws.splice(i, 1); break; }
+  }
+  if (screws.length < 6) return null;
+  for (let i = 0; i < plates.length; i++) {
+    const own = screws.filter(s => s.plateID === plates[i].id);
+    plates[i].holes = own.map(s => ({ x: s.x, y: s.y }));
+    // Tek vidalı plakalar baştan yer çekimiyle sarkmış olarak başlar.
+    if (own.length === 1) {
+      const pv = { x: own[0].x, y: own[0].y };
+      const a = hangAngle({ x: plates[i].cx, y: plates[i].cy }, pv);
+      if (a !== null) { const h = plates[i].holes; plates[i] = rotatedPlate(plates[i], a, pv); plates[i].holes = h; }
+    }
+  }
+  const cover = coverMap(plates, screws);
+  const live = cloneCover(cover);
+
+  // Geçerli bir sökme sırası bul, renkleri bu sıraya göre (biraz karıştırarak) dağıt.
+  const seq = [];
+  const alive = new Set(plates.map(p => p.id));
+  const rem = countBy(screws);
+  let board = screws.slice();
+  while (board.length) {
+    const acc = board.filter(s => !(live[s.id] || []).some(id => alive.has(id)));
+    if (!acc.length) return null;
+    const s = rng.pick(acc);
+    seq.push(s.id);
+    board = board.filter(b => b.id !== s.id);
+    rem[s.plateID]--;
+    if (rem[s.plateID] === 0) alive.delete(s.plateID);
+    if (rem[s.plateID] === 1) applySwing(s.plateID, board.filter(b => b.plateID === s.plateID), plates, screws, live);
+  }
+  for (let i = 0; i < seq.length; i++) {
+    const j = rng.int(i, Math.min(i + cfg.window, seq.length - 1));
+    [seq[i], seq[j]] = [seq[j], seq[i]];
+  }
+  const palette = rng.shuffle(COLOR_KEYS.slice()).slice(0, cfg.colorCount);
+  const boxColors = [];
+  for (let k = 0; k < seq.length / 3; k++) {
+    let c;
+    do { c = rng.pick(palette); } while (palette.length > 1 && c === boxColors[boxColors.length - 1]);
+    boxColors.push(c);
+  }
+  const colorOf = {};
+  seq.forEach((id, k) => { colorOf[id] = boxColors[Math.floor(k / 3)]; });
+  for (const s of screws) s.color = colorOf[s.id];
+  return { number: n, plates, screws, boxQueue: boxColors, bufferSize: 5, cover };
+}
+
+/** Açgözlü çözücü: bölüm, bekleme alanında en az bir yuva boş kalarak çözülebiliyor mu? */
+function greedySolve(lvl, cap) {
+  const alive = new Set(lvl.plates.map(p => p.id));
+  const rem = countBy(lvl.screws);
+  let board = lvl.screws.slice();
+  const q = lvl.boxQueue.slice();
+  const boxes = [null, null];
+  for (let i = 0; i < 2; i++) if (q.length) boxes[i] = { color: q.shift(), n: 0 };
+  const buffer = [];
+  const cover = cloneCover(lvl.cover);
+  const settle = i => {
+    while (boxes[i] && boxes[i].n === 3) {
+      if (!q.length) { boxes[i] = null; return; }
+      const nb = { color: q.shift(), n: 0 };
+      let k;
+      while (nb.n < 3 && (k = buffer.indexOf(nb.color)) >= 0) { buffer.splice(k, 1); nb.n++; }
+      boxes[i] = nb;
+    }
+  };
+  while (board.length) {
+    const acc = board.filter(s => !(cover[s.id] || []).some(id => alive.has(id)));
+    let pick = null, bi = -1;
+    for (const s of acc) {
+      const i = boxes.findIndex(b => b && b.color === s.color && b.n < 3);
+      if (i >= 0) { pick = s; bi = i; break; }
+    }
+    if (!pick) {
+      if (buffer.length >= Math.min(cap, lvl.bufferSize - 1)) return false;
+      const score = s => { const qi = q.indexOf(s.color); return [qi < 0 ? 99 : qi, rem[s.plateID] || 0]; };
+      for (const s of acc) {
+        if (!pick) { pick = s; continue; }
+        const a = score(s), b = score(pick);
+        if (a[0] < b[0] || (a[0] === b[0] && a[1] < b[1])) pick = s;
+      }
+    }
+    if (!pick) return false;
+    const s = pick;
+    board = board.filter(b => b.id !== s.id);
+    if (bi >= 0) { boxes[bi].n++; settle(bi); } else buffer.push(s.color);
+    rem[s.plateID]--;
+    if (rem[s.plateID] === 0) alive.delete(s.plateID);
+    if (rem[s.plateID] === 1) applySwing(s.plateID, board.filter(b => b.plateID === s.plateID), lvl.plates, lvl.screws, cover);
+  }
+  return buffer.length === 0;
+}
+
+function makeLevel(n) {
+  const rng = RNG((Math.imul(n, 2654435761) + 97) >>> 0);
+  const cfg = config(n);
+  let last = null;
+  for (let a = 0; a < 300; a++) {
+    // Uzun süre çözülebilir düzen bulunamazsa koşulları biraz gevşet.
+    if (a > 0 && a % 75 === 0) { cfg.window = Math.max(0, cfg.window - 3); cfg.solveCap = Math.min(5, cfg.solveCap + 1); }
+    const lvl = buildLevel(n, cfg, rng);
+    if (!lvl) continue;
+    last = lvl;
+    if (greedySolve(lvl, cfg.solveCap)) return lvl;
+  }
+  return last || makeLevel(Math.max(1, n - 1));
+}
+
+// =====================================================================
+// 2B fizik: sarkaç gibi sallanan ve düşerken çarpışan plakalar
+// =====================================================================
+const DR = 10, GRAV = 1900, RESTITUTION = 0.35;
+function sampleDisks(p) {
+  const pts = [], step = 13, b = p.bb;
+  for (let y = b.y0 + step / 2; y < b.y1; y += step)
+    for (let x = b.x0 + step / 2; x < b.x1; x += step)
+      if (contains(p, x, y)) pts.push({ x: x - p.cx, y: y - p.cy });
+  return pts.length ? pts : [{ x: 0, y: 0 }];
+}
+class World {
+  constructor() { this.bodies = new Map(); this.onGone = null; this.onBump = null; this.clock = 0; this.lastBump = 0; }
+  reset() { this.bodies.clear(); }
+  make(p, mode) {
+    const disks = sampleDisks(p);
+    let reach = 0;
+    for (const d of disks) reach = Math.max(reach, Math.hypot(d.x, d.y));
+    return {
+      id: p.id, c0x: p.cx, c0y: p.cy, disks, reach: reach + DR, mass: Math.max(disks.length, 1),
+      inertia: disks.reduce((a, d) => a + d.x * d.x + d.y * d.y, 0) + 1, pivotI: 0,
+      mode, pivot: null, x: p.cx, y: p.cy, angle: 0, vx: 0, vy: 0, w: 0, asleep: false, age: 0, ignore: new Set(), world: [],
+    };
+  }
+  hang(p, pivot, wake) {
+    const b = this.bodies.get(p.id) || this.make(p, "pendulum");
+    b.mode = "pendulum"; b.pivot = pivot;
+    b.pivotI = b.disks.reduce((a, d) => { const x = d.x + b.c0x - pivot.x, y = d.y + b.c0y - pivot.y; return a + x * x + y * y; }, 0) + 1;
+    b.asleep = !wake;
+    this.bodies.set(p.id, b);
+  }
+  drop(p, spin) {
+    const b = this.bodies.get(p.id) || this.make(p, "falling");
+    if (b.mode === "pendulum") { const rx = b.x - b.pivot.x, ry = b.y - b.pivot.y; b.vx = -b.w * ry; b.vy = b.w * rx; }
+    b.mode = "falling"; b.w += spin; b.vy -= 120; b.asleep = false; b.age = 0;
+    this.bodies.set(p.id, b);
+    // Başta zaten iç içe olan plakalarla, ayrılana kadar çarpışma yok.
+    this.updW(b);
+    b.ignore = new Set();
+    for (const o of this.bodies.values()) {
+      if (o.id === b.id) continue;
+      this.updW(o);
+      if (this.overlap(b, o)) b.ignore.add(o.id);
+    }
+  }
+  pose(p) {
+    const b = this.bodies.get(p.id);
+    if (!b) return { x: p.cx, y: p.cy, angle: 0, fade: 1 };
+    const fade = b.mode === "falling" ? Math.max(0, Math.min(1, 1 - (b.y - BH) / 260)) : 1;
+    return { x: b.x, y: b.y, angle: b.angle, fade };
+  }
+  frame(dt) {
+    dt = Math.min(dt, 1 / 30);
+    this.clock += dt;
+    for (let i = 0; i < 4; i++) this.step(dt / 4);
+    for (const b of [...this.bodies.values()]) {
+      if (b.mode === "falling" && (b.y - b.reach > BH + 120 || b.age > 4)) {
+        this.bodies.delete(b.id);
+        if (this.onGone) this.onGone(b.id);
+      }
+    }
+  }
+  place(b) {
+    const c = Math.cos(b.angle), s = Math.sin(b.angle), dx = b.c0x - b.pivot.x, dy = b.c0y - b.pivot.y;
+    b.x = b.pivot.x + c * dx - s * dy; b.y = b.pivot.y + s * dx + c * dy;
+  }
+  step(h) {
+    for (const b of this.bodies.values()) {
+      if (b.asleep) continue;
+      if (b.mode === "falling") {
+        b.vy += GRAV * h; b.x += b.vx * h; b.y += b.vy * h; b.angle += b.w * h; b.age += h;
+      } else {
+        const rx = b.x - b.pivot.x;
+        b.w += rx * b.mass * GRAV / b.pivotI * h;   // y aşağı doğru: pozitif açı saat yönünde
+        b.w *= Math.exp(-1.8 * h);
+        b.angle += b.w * h;
+        this.place(b);
+        const ry = b.y - b.pivot.y;
+        // Ağırlık merkezi vidanın altına oturduysa uyut.
+        if (Math.abs(b.w) < 0.08 && Math.abs(rx) < 1.5 && ry >= 0) {
+          b.angle += Math.atan2(b.x - b.pivot.x, ry);
+          this.place(b); b.w = 0; b.asleep = true;
+        }
+      }
+    }
+    this.collide();
+  }
+  updW(b) {
+    const c = Math.cos(b.angle), s = Math.sin(b.angle);
+    b.world = b.disks.map(d => ({ x: b.x + c * d.x - s * d.y, y: b.y + s * d.x + c * d.y }));
+  }
+  overlap(a, b) {
+    if (Math.hypot(a.x - b.x, a.y - b.y) >= a.reach + b.reach) return null;
+    const minD = DR * 2;
+    let best = null, sx = 0, sy = 0;
+    for (const p of a.world) for (const q of b.world) {
+      const dx = q.x - p.x, dy = q.y - p.y;
+      if (Math.abs(dx) >= minD || Math.abs(dy) >= minD) continue;
+      const d = Math.hypot(dx, dy);
+      if (d >= minD || d < 0.001) continue;
+      sx += dx / d; sy += dy / d;
+      const depth = minD - d;
+      if (!best || depth > best.depth) best = { nx: dx / d, ny: dy / d, px: (p.x + q.x) / 2, py: (p.y + q.y) / 2, depth };
+    }
+    if (best) { const l = Math.hypot(sx, sy); if (l > 0.001) { best.nx = sx / l; best.ny = sy / l; } }
+    return best;
+  }
+  collide() {
+    const all = [...this.bodies.values()];
+    const falling = all.filter(b => b.mode === "falling" && b.age < 3);
+    if (!falling.length) return;
+    const others = all.filter(b => b.mode !== "falling" || b.age < 3);
+    for (const b of others) this.updW(b);
+    for (const a of falling) for (const b of others) {
+      if (b.id === a.id) continue;
+      if (b.mode === "falling" && b.id < a.id) continue;   // düşen iki plaka çiftini bir kez işle
+      const hit = this.overlap(a, b);
+      if (a.ignore.has(b.id) || b.ignore.has(a.id)) {
+        if (!hit) { a.ignore.delete(b.id); b.ignore.delete(a.id); }
+        continue;
+      }
+      if (hit) this.resolve(a, b, hit);
+    }
+  }
+  resolve(a, b, hit) {
+    const { nx, ny } = hit, cross = (rx, ry) => rx * ny - ry * nx;
+    const rAx = hit.px - a.x, rAy = hit.py - a.y;
+    const vAx = a.vx - a.w * rAy, vAy = a.vy + a.w * rAx;
+    const kA = 1 / a.mass + cross(rAx, rAy) ** 2 / a.inertia;
+    let vBx, vBy, kB, rBx, rBy;
+    if (b.mode === "falling") {
+      rBx = hit.px - b.x; rBy = hit.py - b.y;
+      vBx = b.vx - b.w * rBy; vBy = b.vy + b.w * rBx;
+      kB = 1 / b.mass + cross(rBx, rBy) ** 2 / b.inertia;
+    } else {
+      rBx = hit.px - b.pivot.x; rBy = hit.py - b.pivot.y;
+      vBx = -b.w * rBy; vBy = b.w * rBx;
+      kB = cross(rBx, rBy) ** 2 / b.pivotI;
+    }
+    // İç içe geçmeyi aç.
+    const push = hit.depth * 0.5;
+    if (b.mode === "falling") { a.x -= nx * push * .5; a.y -= ny * push * .5; b.x += nx * push * .5; b.y += ny * push * .5; }
+    else { a.x -= nx * push; a.y -= ny * push; }
+    const vn = (vBx - vAx) * nx + (vBy - vAy) * ny;
+    if (vn >= 0) return;
+    const j = -(1 + RESTITUTION) * vn / (kA + kB);
+    a.vx -= j * nx / a.mass; a.vy -= j * ny / a.mass; a.w -= j * cross(rAx, rAy) / a.inertia;
+    if (b.mode === "falling") { b.vx += j * nx / b.mass; b.vy += j * ny / b.mass; b.w += j * cross(rBx, rBy) / b.inertia; }
+    else { b.w += j * cross(rBx, rBy) / b.pivotI; b.asleep = false; }
+    if (-vn > 250 && this.clock - this.lastBump > 0.09) { this.lastBump = this.clock; if (this.onBump) this.onBump(Math.min(1, -vn / 1200)); }
+  }
+}
+
+// =====================================================================
+// Ses: hepsi kodla sentezlenen yumuşak tonlar
+// =====================================================================
+const Note = (s, d, f0, f1, w, v) => ({ s, d, f0, f1, w, v });
+const SFX = {
+  unscrew: () => [...[0, 1, 2, 3, 4, 5].map(i => { const f = 700 + i * 45; return Note(i * 0.08, 0.03, f, f * 0.92, "sine", 0.05 + i * 0.008); }),
+                  Note(0.46, 0.12, 430, 700, "sine", 0.1)],
+  toBox: () => [Note(0, 0.16, 660, 470, "sine", 0.24)],
+  toBuffer: () => [Note(0, 0.16, 300, 220, "sine", 0.22)],
+  blocked: () => [Note(0, 0.18, 190, 160, "sine", 0.2)],
+  boxDone: () => [Note(0, 0.35, 659.25, 659.25, "sine", 0.16), Note(0.1, 0.55, 880, 880, "sine", 0.16)],
+  plateFall: () => [Note(0, 0.5, 700, 180, "noise", 0.12), Note(0, 0.45, 240, 110, "sine", 0.08)],
+  swing: () => [Note(0, 0.45, 260, 180, "noise", 0.08), Note(0, 0.35, 150, 120, "sine", 0.07)],
+  bump: () => [Note(0, 0.09, 210, 150, "sine", 0.16), Note(0, 0.05, 900, 500, "noise", 0.05)],
+  warning: () => [0, 1, 2].flatMap(k => { const t = k * 0.26; return [Note(t, 0.24, 740, 740, "sine", 0.42), Note(t, 0.24, 1110, 1110, "sine", 0.14), Note(t, 0.24, 370, 370, "sine", 0.18)]; }),
+  win: () => [523.25, 659.25, 783.99, 1046.5].map((f, i) => Note(i * 0.12, i === 3 ? 0.9 : 0.5, f, f, "sine", 0.15)),
+  lose: () => [Note(0, 0.35, 392, 392, "sine", 0.18), Note(0.22, 0.35, 330, 330, "sine", 0.18), Note(0.44, 0.7, 262, 250, "sine", 0.18)],
+};
+function synth(notes, sr) {
+  const total = Math.max(...notes.map(n => n.s + n.d)) + 0.02;
+  const N = Math.floor(total * sr), out = new Float32Array(N);
+  for (const n of notes) {
+    const s0 = Math.floor(n.s * sr), len = Math.floor(n.d * sr);
+    let ph = 0, lp = 0;
+    for (let k = 0; k < len && s0 + k < N; k++) {
+      const t = k / len, f = n.f0 * Math.pow(n.f1 / n.f0, t);
+      ph += f / sr; ph -= Math.floor(ph);
+      let v;
+      if (n.w === "noise") { const a = 1 - Math.exp(-2 * Math.PI * f / sr); lp += (Math.random() * 2 - 1 - lp) * a; v = lp * 2; }
+      else v = Math.sin(2 * Math.PI * ph);
+      // Yavaş açılış (12 ms) ve yumuşak sönüş.
+      const at = Math.min(1, k / (0.012 * sr));
+      out[s0 + k] += v * Math.sin(at * Math.PI / 2) * (1 - t) * (1 - t) * n.v;
+    }
+  }
+  // Genel alçak geçiren filtre (~2.5 kHz): tizleri törpüler.
+  const a = 1 - Math.exp(-2 * Math.PI * 2500 / sr);
+  let y = 0;
+  for (let i = 0; i < N; i++) { y += (out[i] - y) * a; out[i] = Math.max(-1, Math.min(1, y)); }
+  return out;
+}
+const Sound = {
+  ctx: null, master: null, buffers: {},
+  enabled: (() => { try { return localStorage.getItem("vidala.sound") !== "0"; } catch { return true; } })(),
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.6;
+      this.master.connect(this.ctx.destination);
+      for (const [name, fn] of Object.entries(SFX)) {
+        const data = synth(fn(), this.ctx.sampleRate);
+        const buf = this.ctx.createBuffer(1, data.length, this.ctx.sampleRate);
+        buf.getChannelData(0).set(data);
+        this.buffers[name] = buf;
+      }
+    }
+    if (this.ctx.state === "suspended") this.ctx.resume();
+  },
+  play(name, delay = 0) {
+    if (!this.enabled || !this.ctx || !this.buffers[name]) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.buffers[name];
+    src.connect(this.master);
+    src.start(this.ctx.currentTime + delay);
+  },
+  setEnabled(v) { this.enabled = v; try { localStorage.setItem("vidala.sound", v ? "1" : "0"); } catch {} },
+};
+const vibrate = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+
+// =====================================================================
+// İlerleme
+// =====================================================================
+const Progress = {
+  get unlocked() { try { return Math.max(1, parseInt(localStorage.getItem("vidala.maxLevel") || "1", 10) || 1); } catch { return 1; } },
+  complete(n) { try { if (n + 1 > this.unlocked) localStorage.setItem("vidala.maxLevel", String(n + 1)); } catch {} },
+};
+
+// =====================================================================
+// Oyun modeli
+// =====================================================================
+let boxUID = 0;
+const newBox = color => ({ id: ++boxUID, color, filled: 0, fillTimes: [], closing: false });
+
+class Game {
+  constructor(n) {
+    this.levelNumber = Math.max(1, n);
+    this.world = new World();
+    this.generation = 0;
+    this.load();
+  }
+  load() {
+    this.generation++;
+    const lvl = makeLevel(this.levelNumber);
+    this.plates = lvl.plates; this.screws = lvl.screws; this.cover = lvl.cover;
+    this.queue = lvl.boxQueue.slice();
+    this.totalBoxes = this.queue.length; this.doneBoxes = 0;
+    this.boxes = [null, null];
+    for (let i = 0; i < 2; i++) if (this.queue.length) this.boxes[i] = newBox(this.queue.shift());
+    this.buffer = []; this.capacity = lvl.bufferSize;
+    this.extraSlotUsed = false; this.hintsLeft = 3; this.hintID = null;
+    this.state = "playing"; this.pending = 0; this.released = new Set();
+    this.shakes = new Map(); this.unscrews = [];
+    this.world.reset();
+    this.world.onGone = id => { this.plates = this.plates.filter(p => p.id !== id); };
+    this.world.onBump = k => { Sound.play("bump"); if (k > 0.3) vibrate(8); };
+    // Tek vidayla asılı plakalar çarpılınca sallanabilsin.
+    for (const p of this.plates) {
+      const own = this.screws.filter(s => s.plateID === p.id);
+      if (own.length === 1 && !isBalanced({ x: p.cx, y: p.cy }, own[0])) this.world.hang(p, { x: own[0].x, y: own[0].y }, false);
+    }
+    UI.onStateChange();
+  }
+  get isHard() { return isHard(this.levelNumber); }
+  later(sec, fn) { const g = this.generation; setTimeout(() => { if (g === this.generation) fn(); }, sec * 1000); }
+
+  isBlocked(s) {
+    const above = this.cover[s.id];
+    if (!above || !above.length) return false;
+    return this.plates.some(p => !this.released.has(p.id) && above.includes(p.id));
+  }
+  openBox(color) { return this.boxes.findIndex(b => b && b.color === color && !b.closing && b.filled < 3); }
+
+  tap(x, y) {
+    if (this.state !== "playing") return;
+    const layer = s => this.plates.findIndex(p => p.id === s.plateID);
+    const dist = s => Math.hypot(s.x - x, s.y - y);
+    let s = null;
+    for (const c of this.screws) {
+      if (dist(c) > SR + 10) continue;
+      if (!s || layer(c) > layer(s) || (layer(c) === layer(s) && dist(c) < dist(s))) s = c;
+    }
+    if (!s) return;
+    if (this.isBlocked(s)) return this.shake(s.id);
+    const bi = this.openBox(s.color);
+    if (bi < 0 && this.buffer.length >= this.capacity) return this.shake(s.id);
+
+    const d = UNSCREW, now = performance.now();
+    vibrate(10);
+    Sound.play("unscrew");
+    Sound.play(bi >= 0 ? "toBox" : "toBuffer", d + 0.04);
+    if (this.hintID === s.id) this.hintID = null;
+    // Vida tahtadan hemen kalkar; yerine dönerek çıkan bir kopyası oynatılır.
+    this.unscrews.push({ x: s.x, y: s.y, color: s.color, start: now, seed: Math.random() * 100 });
+    this.screws = this.screws.filter(c => c.id !== s.id);
+    this.swingIfHanging(s.plateID, d);
+    // Kutuya / bekleme alanına varış, vida yerinden çıktıktan sonra görünür.
+    if (bi >= 0) { this.boxes[bi].filled++; this.boxes[bi].fillTimes.push(now + d * 1000); }
+    else this.buffer.push({ id: s.id, color: s.color, at: now + d * 1000 });
+    if (bi >= 0 && this.boxes[bi].filled === 3) this.completeBox(bi, d + 0.1);
+    // Tek boş yuva kaldı: vida yerine oturunca uyarı sesi.
+    if (bi < 0 && this.buffer.length === this.capacity - 1) {
+      Sound.play("warning", d + 0.2);
+      this.later(d + 0.2, () => vibrate([60, 60, 60]));
+    }
+    this.dropEmptyPlates(d);
+    this.evaluate();
+  }
+  shake(id) { vibrate(30); Sound.play("blocked"); this.shakes.set(id, performance.now()); }
+
+  swingIfHanging(plateID, delay) {
+    const own = this.screws.filter(s => s.plateID === plateID);
+    const plate = this.plates.find(p => p.id === plateID);
+    if (own.length !== 1 || !plate) return;
+    const swings = applySwing(plateID, own, this.plates, this.screws, this.cover) !== null;
+    this.later(delay, () => {
+      // Ortasından tutturulmuş plaka dengededir; sallanmaz.
+      if (this.released.has(plateID) || !swings) return;
+      Sound.play("swing");
+      this.world.hang(plate, { x: own[0].x, y: own[0].y }, true);
+    });
+  }
+  completeBox(i, delay = 0) {
+    this.pending++;
+    this.later(delay, () => {
+      if (!this.boxes[i]) return;
+      this.boxes[i].closing = true;
+      vibrate(20);
+      Sound.play("boxDone", 0.1);
+      this.later(0.45, () => {
+        this.pending--; this.doneBoxes++;
+        this.boxes[i] = this.queue.length ? newBox(this.queue.shift()) : null;
+        this.feedFromBuffer(i);
+        this.evaluate();
+      });
+    });
+  }
+  /** Yeni gelen kutuya, bekleme alanındaki aynı renkli vidalar kendiliğinden geçer. */
+  feedFromBuffer(i) {
+    const b = this.boxes[i];
+    if (!b) return;
+    let moved = false, k;
+    while (b.filled < 3 && (k = this.buffer.findIndex(x => x.color === b.color)) >= 0) {
+      this.buffer.splice(k, 1); b.filled++; b.fillTimes.push(performance.now()); moved = true;
+    }
+    if (moved) Sound.play("toBox", 0.1);
+    if (moved && b.filled === 3) this.completeBox(i);
+  }
+  dropEmptyPlates(delay) {
+    const ids = this.plates.filter(p => !this.released.has(p.id) && !this.screws.some(s => s.plateID === p.id)).map(p => p.id);
+    if (!ids.length) return;
+    ids.forEach(id => this.released.add(id));
+    Sound.play("plateFall", delay + 0.05);
+    this.later(delay, () => {
+      for (const p of this.plates) if (ids.includes(p.id)) {
+        p.isFalling = true;
+        // Yer çekimiyle düşer; düşen diğer plakalara ve asılı plakalara çarpar.
+        this.world.drop(p, p.fallSpin / 25);
+      }
+    });
+  }
+  evaluate() {
+    if (this.state !== "playing" || this.pending > 0) return;
+    if (!this.screws.length && !this.buffer.length) {
+      this.later(0.6, () => {
+        if (this.state !== "playing") return;
+        vibrate([30, 40, 30]);
+        Sound.play("win");
+        Progress.complete(this.levelNumber);
+        this.state = "won";
+        UI.onStateChange();
+      });
+      return;
+    }
+    // Bekleme alanının son yuvası da dolduysa oyun biter (vida yerine oturduktan sonra).
+    if (this.buffer.length >= this.capacity) {
+      this.later(UNSCREW + 0.35, () => {
+        if (this.state !== "playing" || this.pending > 0 || this.buffer.length < this.capacity) return;
+        vibrate(200);
+        Sound.play("lose");
+        this.state = "lost";
+        UI.onStateChange();
+      });
+    }
+  }
+  addSlot() {
+    if (this.extraSlotUsed) return;
+    this.extraSlotUsed = true;
+    this.capacity++;
+    if (this.state === "lost") { this.state = "playing"; UI.onStateChange(); }
+  }
+  hint() {
+    if (this.hintsLeft <= 0 || this.state !== "playing") return;
+    const acc = this.screws.filter(s => !this.isBlocked(s));
+    let target = acc.find(s => this.openBox(s.color) >= 0);
+    if (!target) {
+      const qi = s => { const i = this.queue.indexOf(s.color); return i < 0 ? 99 : i; };
+      for (const s of acc) if (!target || qi(s) < qi(target)) target = s;
+    }
+    if (!target) return;
+    this.hintsLeft--;
+    this.hintID = target.id;
+    this.later(2.5, () => { if (this.hintID === target.id) this.hintID = null; });
+  }
+  restart() { this.load(); }
+  nextLevel() { this.levelNumber++; this.load(); }
+}
+
+// =====================================================================
+// Çizim: oyun alanı (canvas)
+// =====================================================================
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const view = { s: 1, ox: 0, oy: 0, dpr: 1, cw: 0, ch: 0 };
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  view.dpr = Math.min(window.devicePixelRatio || 1, 3);
+  view.cw = r.width; view.ch = r.height;
+  canvas.width = Math.round(r.width * view.dpr); canvas.height = Math.round(r.height * view.dpr);
+  view.s = Math.min((r.width - 8) / BW, r.height / BH);
+  view.ox = (r.width - BW * view.s) / 2; view.oy = (r.height - BH * view.s) / 2;
+}
+window.addEventListener("resize", resize);
+
+const smooth = t => t * t * (3 - 2 * t);
+const clamp01 = t => Math.max(0, Math.min(1, t));
+
+function drawScrew(x, y, r, color, rot) {
+  const { s, dpr } = view;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 2 * dpr; ctx.shadowOffsetY = 1.5 * dpr;
+  const g = ctx.createLinearGradient(-r, -r, r, r);
+  g.addColorStop(0, LIGHT[color]); g.addColorStop(1, COLORS[color]);
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowColor = "transparent";
+  const bw = Math.max(1.5 / s, r * 0.16);
+  ctx.lineWidth = bw; ctx.strokeStyle = "rgba(255,255,255,.9)";
+  ctx.beginPath(); ctx.arc(0, 0, r - bw / 2, 0, Math.PI * 2); ctx.stroke();
+  ctx.rotate(rot);
+  ctx.fillStyle = "rgba(0,0,0,.35)";
+  ctx.beginPath(); ctx.roundRect(-r * 0.5, -r * 0.12, r, r * 0.24, r * 0.12); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(-r * 0.12, -r * 0.5, r * 0.24, r, r * 0.12); ctx.fill();
+  ctx.restore();
+}
+
+/** Sökülen vida: saat yönünün tersine dönerek yükselir, dişli gövdesi görünür, sonra fırlayıp kaybolur. */
+function drawUnscrew(u, now) {
+  const t = (now - u.start) / 1000, D = UNSCREW, size = SR * 2;
+  let angle, lift;
+  if (t < D * 0.25) { const k = smooth(t / (D * 0.25)); angle = -90 * k * Math.PI / 180; lift = 0.1 * k; }
+  else { const k = smooth(clamp01((t - D * 0.25) / (D * 0.75))); angle = (-90 - 540 * k) * Math.PI / 180; lift = 0.1 + 0.9 * k; }
+  let pop = 1;
+  if (t > D) { const k = t - D; pop = k < 0.07 ? 1 + 0.15 * (k / 0.07) : 1.15 - 0.85 * smooth(clamp01((k - 0.07) / 0.14)); }
+  const op = t < D + 0.06 ? 1 : 1 - clamp01((t - D - 0.06) / 0.15);
+  if (op > 0) {
+    ctx.save();
+    ctx.globalAlpha = op;
+    ctx.translate(u.x, u.y);
+    const sc = (1 + lift * 0.28) * pop;
+    ctx.scale(sc, sc);
+    // Yuvada kalan gölge
+    ctx.fillStyle = `rgba(0,0,0,${0.3 * (1 - lift * 0.6)})`;
+    ctx.beginPath(); ctx.arc(0, lift * size * 0.35, SR * (0.9 + lift * 0.25), 0, Math.PI * 2); ctx.fill();
+    // Dişli gövde
+    if (lift > 0.05) {
+      const w = size * 0.42, h = size * 0.62 * lift, y0 = size * 0.31 * lift - h / 2;
+      ctx.save();
+      ctx.beginPath(); ctx.roundRect(-w / 2, y0, w, h, w * 0.3); ctx.clip();
+      ctx.fillStyle = "#B8C0D4"; ctx.fillRect(-w / 2, y0, w, h);
+      const pitch = Math.max(3, w * 0.32), shift = ((-angle / (Math.PI * 2)) % 1) * pitch;
+      ctx.fillStyle = "rgba(60,70,95,.45)";
+      for (let y = y0 - pitch + shift; y < y0 + h; y += pitch) ctx.fillRect(-w / 2, y, w, pitch * 0.35);
+      ctx.restore();
+    }
+    drawScrew(0, -lift * size * 0.22, SR, u.color, angle);
+    ctx.restore();
+  }
+  // Çıkınca küçük parçacık patlaması
+  if (t > D && t < D + 0.55) {
+    const k = 1 - Math.pow(1 - (t - D) / 0.55, 3);
+    for (let i = 0; i < 10; i++) {
+      const jit = Math.sin(i * 12.9898 + u.seed * 78.233);
+      const a = i / 10 * Math.PI * 2 + jit * 0.35, reach = 34 * (0.75 + 0.35 * Math.abs(jit));
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = i % 3 === 0 ? "#fff" : COLORS[u.color];
+      ctx.beginPath(); ctx.arc(u.x + Math.cos(a) * reach * k, u.y + Math.sin(a) * reach * k, 3 * (1 - 0.7 * k), 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawBoard(now) {
+  const g = game, { s, ox, oy, dpr } = view;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
+  for (const p of g.plates) {
+    const pose = g.world.pose(p);
+    if (pose.fade <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = pose.fade;
+    // Fizik motorunun verdiği konum: plaka merkezinin etrafında döndür, sonra taşı.
+    ctx.translate(pose.x, pose.y); ctx.rotate(pose.angle); ctx.translate(-p.cx, -p.cy);
+    const K = KINDS[p.kind];
+    ctx.save();
+    ctx.translate(p.cx, p.cy); ctx.rotate(p.angle);
+    ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 10 * dpr; ctx.shadowOffsetY = 4 * dpr;
+    ctx.fillStyle = rgba(TINTS[p.tint], 0.9);
+    ctx.fill(K.path);
+    ctx.shadowColor = "transparent";
+    ctx.lineWidth = 1.5 / s; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(255,255,255,.55)";
+    ctx.stroke(K.path);
+    ctx.restore();
+    ctx.fillStyle = "rgba(26,32,56,.55)";
+    for (const h of p.holes) { ctx.beginPath(); ctx.arc(h.x, h.y, SR * 0.8, 0, Math.PI * 2); ctx.fill(); }
+    for (const sc of g.screws) {
+      if (sc.plateID !== p.id) continue;
+      let dx = 0;
+      const sh = g.shakes.get(sc.id);
+      if (sh !== undefined) { const k = (now - sh) / 350; if (k < 1) dx = 5 / s * Math.sin(k * Math.PI * 6); else g.shakes.delete(sc.id); }
+      drawScrew(sc.x + dx, sc.y, SR, sc.color, 0);
+      if (g.hintID === sc.id) {
+        const k = (now / 700) % 1;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - k);
+        ctx.lineWidth = 3 / s; ctx.strokeStyle = "#fff";
+        ctx.beginPath(); ctx.arc(sc.x, sc.y, SR * (1 + 0.5 * k), 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+  g.unscrews = g.unscrews.filter(u => now - u.start < (UNSCREW + 0.6) * 1000);
+  for (const u of g.unscrews) drawUnscrew(u, now);
+}
+
+canvas.addEventListener("pointerdown", e => {
+  if (!game) return;
+  const r = canvas.getBoundingClientRect();
+  game.tap((e.clientX - r.left - view.ox) / view.s, (e.clientY - r.top - view.oy) / view.s);
+});
+
+// =====================================================================
+// Arayüz (HTML)
+// =====================================================================
+const $ = id => document.getElementById(id);
+const ICON = {
+  on: '<svg class="i" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  off: '<svg class="i" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  check: '<svg class="i" viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z" stroke="currentColor" stroke-width="1.5"/></svg>',
+  lock: '<svg class="i" viewBox="0 0 24 24" style="font-size:18px"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>',
+  flag: '<svg class="i" viewBox="0 0 24 24" style="font-size:13px"><path d="M5 3h2v18H5zm3 1h11l-3 4 3 4H8z"/></svg>',
+  won: '<svg class="i" viewBox="0 0 24 24" style="color:#2ECC71"><path d="M12 2l2.4 1.8 3-.2.9 2.9 2.5 1.7-1 2.8 1 2.8-2.5 1.7-.9 2.9-3-.2L12 22l-2.4-1.8-3 .2-.9-2.9-2.5-1.7 1-2.8-1-2.8 2.5-1.7.9-2.9 3 .2z"/><path d="M10.5 15.5l-3-3 1.4-1.4 1.6 1.6 4.6-4.6 1.4 1.4z" fill="#1F2643"/></svg>',
+  lost: '<svg class="i" viewBox="0 0 24 24" style="color:#FF8C42"><path d="M12 2 1 21h22z"/><path d="M11 9h2v6h-2zm0 7.5h2v2h-2z" fill="#1F2643"/></svg>',
+};
+const screwHTML = (color, size, cls = "") =>
+  `<div class="screw ${cls}" style="--c:${COLORS[color]};--l:${LIGHT[color]};--s:${size}px"></div>`;
+
+let game = null;
+let lastSig = "", shownKeys = new Set();
+
+const UI = {
+  showMap() {
+    game = null;
+    $("result").classList.add("hidden");
+    $("game").classList.add("hidden");
+    $("map").classList.remove("hidden");
+    renderMap();
+  },
+  play(n) {
+    Sound.unlock();
+    $("map").classList.add("hidden");
+    $("game").classList.remove("hidden");
+    lastSig = ""; shownKeys = new Set();
+    game = new Game(n);
+    requestAnimationFrame(resize);
+  },
+  onStateChange() {
+    if (!game) return;
+    lastSig = "";
+    const r = $("result");
+    if (game.state === "playing") { r.classList.add("hidden"); return; }
+    const won = game.state === "won";
+    $("resultCard").innerHTML = `
+      <div class="ic">${won ? ICON.won : ICON.lost}</div>
+      <h2>${won ? (game.isHard ? "Zor Bölüm Geçildi!" : "Bölüm Tamamlandı!") : "Boşluk Kalmadı"}</h2>
+      <p>${won ? "Tüm vidaları söktün." : "Bekleme alanı doldu."}</p>
+      ${won ? '<button class="primary" data-a="next">Sonraki Bölüm</button>'
+            : (!game.extraSlotUsed ? '<button class="primary" data-a="slot">+1 Boşluk ile Devam</button><button class="link" data-a="retry">Tekrar Dene</button>'
+                                   : '<button class="primary" data-a="retry">Tekrar Dene</button>')}
+      <button class="link dim" data-a="map">Haritaya Dön</button>`;
+    r.classList.remove("hidden");
+    if (won) confetti();
+  },
+};
+$("resultCard").addEventListener("click", e => {
+  const a = e.target.closest("[data-a]")?.dataset.a;
+  if (!a || !game) return;
+  if (a === "next") game.nextLevel();
+  else if (a === "slot") game.addSlot();
+  else if (a === "retry") game.restart();
+  else if (a === "map") UI.showMap();
+});
+
+function renderHUD(now) {
+  const g = game;
+  const vis = b => b ? b.fillTimes.filter(t => t <= now).length : 0;
+  const buf = g.buffer.filter(x => x.at <= now);
+  const sig = JSON.stringify([g.levelNumber, g.boxes.map(b => b && [b.id, b.color, vis(b), b.closing]), g.queue.slice(0, 3), g.queue.length,
+    buf.map(x => x.id), g.capacity, g.hintsLeft, g.extraSlotUsed, g.doneBoxes, g.totalBoxes, Sound.enabled]);
+  if (sig === lastSig) return;
+  lastSig = sig;
+  const keys = new Set();
+
+  $("lvlTitle").textContent = `Bölüm ${g.levelNumber}`;
+  $("hardBadge").style.display = g.isHard ? "" : "none";
+  $("bar").classList.toggle("hard", g.isHard);
+  $("bar").firstElementChild.style.width = `${g.totalBoxes ? g.doneBoxes / g.totalBoxes * 100 : 0}%`;
+  $("boxCount").textContent = `${g.doneBoxes}/${g.totalBoxes}`;
+  $("soundBtn").innerHTML = Sound.enabled ? ICON.on : ICON.off;
+
+  let html = "";
+  g.boxes.forEach((b, i) => {
+    if (!b) { html += `<div class="boxslot"><div class="box empty">${ICON.check}</div></div>`; return; }
+    const bk = "box" + b.id, n = vis(b);
+    keys.add(bk);
+    let slots = "";
+    for (let k = 0; k < 3; k++) {
+      const sk = `${bk}-${k}`;
+      let inner = "";
+      if (k < n) { keys.add(sk); inner = screwHTML(b.color, 26, shownKeys.has(sk) ? "" : "pop"); }
+      slots += `<div class="hole">${inner}</div>`;
+    }
+    let burst = "";
+    if (b.closing) {
+      for (let k = 0; k < 16; k++) {
+        const a = k / 16 * Math.PI * 2, r = 55 + (k % 3) * 10;
+        burst += `<i style="background:${k % 3 ? COLORS[b.color] : "#fff"};--x:${Math.cos(a) * r}px;--y:${Math.sin(a) * r}px"></i>`;
+      }
+    }
+    html += `<div class="boxslot"><div class="box ${shownKeys.has(bk) ? "" : "enter"} ${b.closing ? "closing" : ""}" style="--c:${COLORS[b.color]}">
+      <div class="slots">${slots}</div><div class="check">${ICON.check}</div>${b.closing ? `<div class="burst">${burst}</div>` : ""}</div></div>`;
+  });
+  const q = g.queue.slice(0, 3).map(c => `<i style="background:${COLORS[c]}"></i>`).join("");
+  html += `<div class="queue">Sıradaki<div class="dots">${q || ICON.flag}</div><span>${g.queue.length > 3 ? "+" + (g.queue.length - 3) : "&nbsp;"}</span></div>`;
+  $("boxes").innerHTML = html;
+
+  let bh = "";
+  for (let k = 0; k < g.capacity; k++) {
+    const it = buf[k];
+    let inner = "";
+    if (it) { const key = "buf" + it.id; keys.add(key); inner = screwHTML(it.color, 30, shownKeys.has(key) ? "" : "pop"); }
+    bh += `<div class="cell">${inner}</div>`;
+  }
+  $("buffer").innerHTML = bh;
+  $("buffer").classList.toggle("danger", buf.length >= g.capacity - 1);
+
+  $("slotBtn").disabled = g.extraSlotUsed;
+  $("slotBadge").textContent = g.extraSlotUsed ? "0" : "1";
+  $("hintBtn").disabled = g.hintsLeft <= 0;
+  $("hintBadge").textContent = g.hintsLeft;
+  shownKeys = keys;
+}
+
+$("mapBtn").onclick = () => UI.showMap();
+$("soundBtn").onclick = () => { Sound.unlock(); Sound.setEnabled(!Sound.enabled); lastSig = ""; };
+$("slotBtn").onclick = () => game && game.addSlot();
+$("hintBtn").onclick = () => game && game.hint();
+$("restartBtn").onclick = () => game && game.restart();
+$("playBtn").onclick = () => UI.play(Progress.unlocked);
+document.addEventListener("pointerdown", () => Sound.unlock(), { capture: true });
+
+function confetti() {
+  const box = $("confetti");
+  box.innerHTML = "";
+  const cols = Object.values(COLORS);
+  for (let i = 0; i < 70; i++) {
+    const el = document.createElement("i");
+    el.style.left = `${(i * 37 % 100)}%`;
+    el.style.background = cols[i % cols.length];
+    el.style.setProperty("--dx", `${(Math.sin(i * 1.7) * 80).toFixed(0)}px`);
+    el.style.setProperty("--r", `${(i * 47) % 720 - 360}deg`);
+    el.style.animationDuration = `${1.8 + (i % 7) * 0.25}s`;
+    el.style.animationDelay = `${(i % 10) * 0.05}s`;
+    box.appendChild(el);
+  }
+  setTimeout(() => { box.innerHTML = ""; }, 4200);
+}
+
+// =====================================================================
+// Bölüm haritası
+// =====================================================================
+function renderMap() {
+  const unlocked = Progress.unlocked, count = unlocked + 12, rowH = 96;
+  const scroll = $("mapScroll"), inner = $("mapInner");
+  const w = scroll.clientWidth || 360;
+  const pt = n => ({ x: w / 2 + Math.sin(n * 0.9) * w * 0.27, y: (count - n) * rowH + rowH / 2 });
+  inner.style.height = `${count * rowH + 24}px`;
+  let path = "";
+  for (let n = 1; n < count; n++) {
+    const a = pt(n), b = pt(n + 1), my = (a.y + b.y) / 2;
+    const d = `M${a.x},${a.y} C${a.x},${my} ${b.x},${my} ${b.x},${b.y}`;
+    path += n + 1 <= unlocked
+      ? `<path d="${d}" stroke="${rgba(ACCENT, .75)}" stroke-width="6" stroke-linecap="round" fill="none"/>`
+      : `<path d="${d}" stroke="rgba(255,255,255,.14)" stroke-width="4" stroke-linecap="round" stroke-dasharray="2 10" fill="none"/>`;
+  }
+  let html = `<svg class="road" width="${w}" height="${count * rowH}">${path}</svg>`;
+  for (let n = 1; n <= count; n++) {
+    const p = pt(n), st = n < unlocked ? "done" : n === unlocked ? "cur" : "locked", hard = isHard(n);
+    if (n % 10 === 1 && n > 1) html += `<div class="zone" style="left:${w / 2}px;top:${p.y + rowH / 2}px">Bölge ${Math.floor((n - 1) / 10) + 1}</div>`;
+    const label = st === "done" ? `<span class="n">${n}</span>${ICON.check.replace('class="i"', 'class="i ck"')}` : st === "cur" ? n : ICON.lock;
+    html += `<button class="node ${st} ${hard ? "hard" : ""}" style="left:${p.x}px;top:${p.y}px" data-n="${n}" ${st === "locked" ? "disabled" : ""}
+      aria-label="Bölüm ${n}${hard ? ", zor" : ""}${st === "locked" ? ", kilitli" : ""}">
+      ${st === "cur" ? '<span class="ring"></span>' : ""}<span class="shape">${label}</span>${hard ? '<span class="tag">ZOR</span>' : ""}</button>`;
+  }
+  inner.innerHTML = html;
+  $("doneCount").textContent = `${unlocked - 1} bölüm`;
+  $("playBtn").textContent = `Oyna  ·  Bölüm ${unlocked}`;
+  scroll.scrollTop = pt(unlocked).y - scroll.clientHeight / 2;
+}
+$("mapInner").addEventListener("click", e => {
+  const b = e.target.closest(".node");
+  if (b && !b.disabled) UI.play(parseInt(b.dataset.n, 10));
+});
+window.addEventListener("resize", () => { if (!game) renderMap(); });
+
+// =====================================================================
+// Ana döngü
+// =====================================================================
+let lastT = performance.now();
+function loop(now) {
+  const dt = (now - lastT) / 1000;
+  lastT = now;
+  if (game) {
+    game.world.frame(dt);
+    drawBoard(now);
+    renderHUD(now);
+  }
+  requestAnimationFrame(loop);
+}
+UI.showMap();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
