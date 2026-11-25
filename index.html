@@ -178,7 +178,8 @@ svg.i { width: 1em; height: 1em; fill: currentColor; display: block; }
 // =====================================================================
 const BW = 360, BH = 470, SR = 15;
 const COLORS = { red: "#FF4D5E", blue: "#3D8BFF", yellow: "#FFD23F", green: "#2ECC71",
-                 purple: "#9B5DE5", orange: "#FF8C42", pink: "#FF5DA2", cyan: "#22D3EE" };
+                 purple: "#9B5DE5", orange: "#FF8C42", pink: "#FF5DA2", cyan: "#22D3EE",
+                 lime: "#A3E635", brown: "#A86B3C", charcoal: "#4B5068" };
 const COLOR_KEYS = Object.keys(COLORS);
 const TINTS = ["#E6EAF4", "#F3E6DA", "#DDEFE6", "#E9E0F3", "#DCE8F5", "#F4E3E8"];
 const UNSCREW = 0.5;          // vidanın dönerek çıkma süresi (sn)
@@ -343,17 +344,17 @@ function countBy(screws) { const m = {}; for (const s of screws) m[s.plateID] = 
 // =====================================================================
 const isHard = n => n % 5 === 0;
 function config(n) {
-  // Hızlı artan zorluk: ~15. bölümde tavana yaklaşır.
+  // Hızlı artan zorluk: çok katman, çok renk; ~12. bölümde tavana yaklaşır.
   const c = {
-    plateCount: Math.min(5 + Math.floor(n * 3 / 2), 28),
-    colorCount: Math.min(3 + Math.floor(n / 2), COLOR_KEYS.length),
-    maxScrews: n <= 1 ? 2 : (n <= 3 ? 3 : 4),
-    window: Math.min(3 + n, 18),
+    plateCount: Math.min(7 + n * 2, 40),
+    colorCount: Math.min(4 + Math.floor(n * 2 / 3), COLOR_KEYS.length),
+    maxScrews: n <= 1 ? 3 : 4,
+    window: Math.min(3 + Math.floor(n / 2), 10),
     solveCap: n <= 1 ? 3 : (n <= 4 ? 4 : 5),
-    spread: Math.max(0.62, 1 - n * 0.02),
+    spread: Math.max(0.55, 1 - n * 0.03),
   };
   if (isHard(n)) {
-    c.plateCount = Math.min(c.plateCount + 5, 32); c.window += 4; c.solveCap = 5; c.spread = Math.max(0.58, c.spread - 0.08);
+    c.plateCount = Math.min(c.plateCount + 6, 46); c.window += 3; c.solveCap = 5; c.spread = Math.max(0.5, c.spread - 0.08);
   }
   return c;
 }
@@ -438,11 +439,16 @@ function buildLevel(n, cfg, rng) {
     [seq[i], seq[j]] = [seq[j], seq[i]];
   }
   const palette = rng.shuffle(COLOR_KEYS.slice()).slice(0, cfg.colorCount);
+  // Renkler torbadan çekilir: izin verilen her renk kullanılır, art arda aynı renk gelmez.
   const boxColors = [];
+  let bag = [];
   for (let k = 0; k < seq.length / 3; k++) {
-    let c;
-    do { c = rng.pick(palette); } while (palette.length > 1 && c === boxColors[boxColors.length - 1]);
-    boxColors.push(c);
+    if (!bag.length) bag = rng.shuffle(palette.slice());
+    const last = boxColors[boxColors.length - 1];
+    let i = bag.findIndex(c => c !== last);
+    // Torbada sadece bir önceki renk kaldıysa, yeni bir torba açıp ondan çek.
+    if (i < 0) { bag = rng.shuffle(palette.filter(c => c !== last)).concat(bag); i = 0; }
+    boxColors.push(bag.splice(i, 1)[0]);
   }
   const colorOf = {};
   seq.forEach((id, k) => { colorOf[id] = boxColors[Math.floor(k / 3)]; });
@@ -498,17 +504,16 @@ function greedySolve(lvl, cap) {
 
 function makeLevel(n) {
   const rng = RNG((Math.imul(n, 2654435761) + 97) >>> 0);
-  const cfg = config(n);
-  let last = null;
-  for (let a = 0; a < 300; a++) {
-    // Uzun süre çözülebilir düzen bulunamazsa koşulları biraz gevşet.
-    if (a > 0 && a % 75 === 0) { cfg.window = Math.max(0, cfg.window - 3); cfg.solveCap = Math.min(5, cfg.solveCap + 1); }
+  const cfg = config(n), base = cfg.window;
+  for (let a = 0; a < 400; a++) {
+    // Çözülebilir düzen bulunamazsa renk karışıklığını kademeli azalt; sonunda sıfıra iner.
+    cfg.window = Math.max(0, base - Math.floor(a / 25) * 2);
+    if (a >= 200) cfg.solveCap = 5;
     const lvl = buildLevel(n, cfg, rng);
-    if (!lvl) continue;
-    last = lvl;
-    if (greedySolve(lvl, cfg.solveCap)) return lvl;
+    if (lvl && greedySolve(lvl, cfg.solveCap)) return lvl;
   }
-  return last || makeLevel(Math.max(1, n - 1));
+  // Çok nadir: bu bölüm için hiç çözülebilir düzen çıkmadıysa bir öncekini kullan.
+  return makeLevel(Math.max(1, n - 1));
 }
 
 // =====================================================================
@@ -734,7 +739,10 @@ const Sound = {
   },
   setEnabled(v) { this.enabled = v; try { localStorage.setItem("vidala.sound", v ? "1" : "0"); } catch {} },
 };
-const vibrate = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+const vibrate = ms => {
+  // Tarayıcılar titreşimi ancak kullanıcı sayfaya dokunduktan sonra izin verir.
+  try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(ms); } catch {}
+};
 
 // =====================================================================
 // İlerleme
